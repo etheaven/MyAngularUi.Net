@@ -1,12 +1,9 @@
 ﻿using MAU.Core;
 using MAU.Events;
-using MAU.Helper.Enums;
 using MAU.ReadyElement;
 using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
 using MAU.ReadyElement.Angular;
+using Newtonsoft.Json.Linq;
 
 namespace MAU.Example
 {
@@ -20,10 +17,12 @@ namespace MAU.Example
 		private MauMatSelect unrealVersion;
 		private MauMatSelect unrealConfig;
 		private MauTable targetInfoTbl;
+		private MauMatButton targetLockBtn;
+		private MauMatSelectionList finderGObjectsList;
 
 		#endregion
 
-		public override void InitElements()
+		protected override void InitElements()
 		{
 			//
 			// ProcessId
@@ -42,15 +41,12 @@ namespace MAU.Example
 			// UseKernel
 			//
 			useKernel = new MauMatSlideToggle(this, "UseKernel");
-			useKernel.Change += UseKernel_Change;
 
 			//
 			// UEVersion
 			//
 			unrealVersion = new MauMatSelect(this, "UEVersion");
-			unrealVersion.SelectionChange += UnrealVersion_SelectionChange;
 			unrealVersion.Options.AddRange(new[] { "CorrM-0", "CorrM-1", "CorrM-2" });
-			unrealVersion.UpdateOptions();
 
 			//
 			// UEConfig
@@ -58,44 +54,75 @@ namespace MAU.Example
 			unrealConfig = new MauMatSelect(this, "UEConfig");
 			unrealConfig.SelectionChange += UnrealConfig_SelectionChange;
 			unrealConfig.Options.AddRange(new[] { "CorrM-0", "CorrM-1", "CorrM-2" });
-			unrealConfig.UpdateOptions();
+
+			//
+			// TargetLockBtn
+			//
+			targetLockBtn = new MauMatButton(this, "TargetLockBtn");
+			targetLockBtn.Click += TargetLockBtn_Click;
 
 			//
 			// TargetInfo
 			//
 			targetInfoTbl = new MauTable(this, "TargetInfoTbl");
-			targetInfoTbl.Content.Columns.Add();
-			//targetInfoTbl.Options.AddRange(new[] { "CorrM-0", "CorrM-1", "CorrM-2" });
-			//targetInfoTbl.UpdateOptions();
+			targetInfoTbl.Content.Columns.AddRange(new[]
+			{
+				"",
+				""
+			});
+			targetInfoTbl.Content.Rows.AddRange(new[]
+			{
+				new[] { "Window Name", "Bad Name" },
+				new[] { "Process ID", "0x00" },
+				new[] { "Game Arch", "64" },
+				new[] { "Exe Name", "UFT.exe" },
+				new[] { "Modules Count", "12" },
+				new[] { "Unreal Version", "4.24" },
+				new[] { "Anti Cheat", "UnKnown" }
+			});
 
-			// Register all MauElements
-			RegisterComponent();
+			//
+			// FinderGObjectsList
+			//
+			finderGObjectsList = new MauMatSelectionList(this, "FinderGObjectsList");
+			finderGObjectsList.Click += FinderGObjectsList_Click;
+			finderGObjectsList.SelectionChange += FinderGObjectsList_SelectionChange;
+			finderGObjectsList.Options.AddRange(new[] { "CorrM0", "CorrM1" });
 		}
 
+		private void FinderGObjectsList_SelectionChange(MauElement element, MauEventInfo eventInfo)
+		{
+			string gg = eventInfo.Data["option"]!["_value"]!.Value<string>();
+		}
+
+		private void FinderGObjectsList_Click(MauElement element, MauEventInfo eventInfo)
+		{
+
+		}
 
 		#region [ Mau Events ]
 
+		private void ProcessId_InputChange(MauElement element, MauEventInfo eventInfo)
+		{
+			if (processId.Value.StartsWith("0x"))
+				processId.SetStyle("color", "red");
+			else
+				processId.RemoveStyle("color");
+		}
 		private void UnrealConfig_SelectionChange(MauElement element, MauEventInfo eventInfo)
 		{
-			
+
 		}
-		private void UseKernel_Change(MauElement element, MauEventInfo eventInfo)
+		private void TargetLockBtn_Click(MauElement element, MauEventInfo eventInfo)
 		{
-			Console.WriteLine(useKernel.Checked);
+			unrealVersion.Open();
 		}
 		private void ProcessAutoFind_Click(MauElement element, MauEventInfo eventInfo)
 		{
 			Console.WriteLine(processAutoFind.Disabled);
 		}
-		private void ProcessId_InputChange(MauElement element, MauEventInfo eventInfo)
-		{
-
-		}
-		private void UnrealVersion_SelectionChange(MauElement element, MauEventInfo eventInfo)
-		{
-			Console.WriteLine(unrealVersion.SelectedOption);
-		}
 
 		#endregion
+
 	}
 }

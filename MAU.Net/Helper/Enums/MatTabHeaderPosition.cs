@@ -5,18 +5,15 @@ using System.Text;
 
 namespace MAU.Helper.Enums
 {
-	public enum ThemePalette
+	public enum MatTabHeaderPosition
 	{
 		[MauEnumMember("")]
 		NotSet,
 
-		[MauEnumMember("primary")]
-		Primary,
+		[MauEnumMember("above")]
+		Above,
 
-		[MauEnumMember("accent")]
-		Accent,
-
-		[MauEnumMember("warn")]
-		Warn
+		[MauEnumMember("below")]
+		Below
 	}
 }

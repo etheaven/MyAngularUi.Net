@@ -17,6 +17,11 @@ namespace MAU
 {
 	public static class MyAngularUi
 	{
+		public struct RequestState
+		{
+			public int RequestId;
+			public bool SuccessSend;
+		}
 		public enum RequestType
 		{
 			/// <summary>
@@ -61,9 +66,9 @@ namespace MAU
 			CallMethod = 7,
 
 			/// <summary>
-			/// Get style from front-end side
+			/// Get return of <see cref="CallMethod"/> from front-end side
 			/// </summary>
-			GetStyle = 8,
+			ReceiveMethod = 8,
 
 			/// <summary>
 			/// Set style on front-end side
@@ -73,7 +78,22 @@ namespace MAU
 			/// <summary>
 			/// Remove style on front-end side
 			/// </summary>
-			RemoveStyle = 9
+			RemoveStyle = 10,
+
+			/// <summary>
+			/// Set/Add class on front-end side
+			/// </summary>
+			AddClass = 11,
+
+			/// <summary>
+			/// Remove class on front-end side
+			/// </summary>
+			RemoveClass = 12,
+
+			/// <summary>
+			/// Call method in one of `MauAccessibleServices` on front-end side
+			/// </summary>
+			ServiceMethodCall = 13
 		}
 
 		#region [ Static Fields ]
@@ -103,17 +123,29 @@ namespace MAU
 				.Select(val => (dynamic)Activator.CreateInstance(val))
 				.ToDictionary(key => (Type)key.TargetType, val => val);
 		}
-		public static JToken ParseMauData(Type varType, object varObj)
+		public static JToken ParseMauDataToFrontEnd(Type varType, object varObj)
 		{
 			dynamic parser = !_varParsers.ContainsKey(varType)
 				? _varParsers[typeof(object)]
 				: _varParsers[varType];
 
-			return parser.Parse((dynamic)varObj);
+			return parser.ParseToFrontEnd((dynamic)varObj);
 		}
-		public static JToken ParseMauData<T>(T var)
+		public static JToken ParseMauDataToFrontEnd<T>(T var)
 		{
-			return ParseMauData(typeof(T), var);
+			return ParseMauDataToFrontEnd(typeof(T), var);
+		}
+		public static object ParseMauDataFromFrontEnd(Type varType, JToken varObj)
+		{
+			dynamic parser = !_varParsers.ContainsKey(varType)
+				? _varParsers[typeof(object)]
+				: _varParsers[varType];
+
+			return parser.ParseFromFrontEnd((dynamic)varObj);
+		}
+		public static T ParseMauDataFromFrontEnd<T>(JToken var)
+		{
+			return (T)ParseMauDataFromFrontEnd(typeof(T), var);
 		}
 
 		public static void Setup(int webSocketPort)
@@ -137,11 +169,6 @@ namespace MAU
 
 			InitVarParser();
 		}
-		public static void Stop()
-		{
-			Init = false;
-			WebSocket?.Stop();
-		}
 		public static Task<bool> Start()
 		{
 			return Task.Run(() =>
@@ -153,7 +180,7 @@ namespace MAU
 					return WebSocket.IsListening;
 
 				WebSocket = new WebSocketServer(Port);
-				WebSocket.AddWebSocketService<MauSockHandler>("/UiHandler");
+				WebSocket.AddWebSocketService<MauSockHandler>("/MauHandler");
 				WebSocket.Start();
 
 				_working = true;
@@ -162,8 +189,13 @@ namespace MAU
 				return WebSocket.IsListening;
 			});
 		}
+		public static void Stop()
+		{
+			Init = false;
+			WebSocket?.Stop();
+		}
 
-		internal static Task<bool> Send(string dataToSend)
+		private static Task<bool> Send(string dataToSend)
 		{
 			return Task.Run(() =>
 			{
@@ -180,10 +212,12 @@ namespace MAU
 				return sendState;
 			});
 		}
-		internal static async Task<bool> Send(string mauElementId, RequestType requestType, JObject data)
+		internal static async Task<RequestState> Send(string mauElementId, RequestType requestType, JObject data)
 		{
+			int requestId = Utils.RandomInt(0, 100000);
 			var dSend = new JObject
 			{
+				{ "requestId", requestId },
 				{ "requestType", (int)requestType },
 				{ "mauElementId", mauElementId },
 				{ "data", data }
@@ -200,13 +234,14 @@ namespace MAU
 				_requestsQueue.Enqueue(dataToSend);
 
 			Debug.WriteLine("===============");
-			return sendState;
+
+			return new RequestState() { RequestId = requestId, SuccessSend = sendState };
 		}
-		internal static Task<bool> SendRequest(string mauElementId, RequestType requestType, JObject data)
+		internal static Task<RequestState> SendRequest(string mauElementId, RequestType requestType, JObject data)
 		{
 			return Send(mauElementId, requestType, data ?? new JObject());
 		}
-		internal static Task<bool> SendTsCode(string mauElementId, string code)
+		internal static Task<RequestState> ExecuteTsCode(string mauElementId, string code)
 		{
 			var data = new JObject()
 			{
@@ -219,16 +254,16 @@ namespace MAU
 		{
 			// Decode json
 			JObject jsonRequest = JObject.Parse(e.Data);
-			var jsonData = jsonRequest["data"].Value<JObject>();
 
 			// Get request info
-			string uiId = jsonRequest["mauElementId"].Value<string>();
-			var requestType = (RequestType)jsonRequest["requestType"].Value<int>();
+			string mauId = jsonRequest["mauElementId"]!.Value<string>();
+			var requestType = (RequestType)jsonRequest["requestType"]!.Value<int>();
+			var jsonData = jsonRequest["data"]!.Value<JObject>();
 
 			// Check if ui is registered
-			if (!GetUiElement(uiId, out MauElement uiElement))
+			if (!GetMauElement(mauId, out MauElement mauElement))
 			{
-				// //////////////////////////////////////////////////////////////// Remove comment prefex when finish debug
+				// //////////////////////////////////////////////////////////////// Remove comment prefix when finish debug
 				// throw new KeyNotFoundException("UiElement not found.");
 				return;
 			}
@@ -243,27 +278,34 @@ namespace MAU
 				case RequestType.GetEvents:
 					var ret = new JObject
 					{
-						{ "events", new JArray(uiElement.Events) }
+						{ "events", new JArray(mauElement.Events) }
 					};
 
 					// Send response
-					await Send(uiId, requestType, ret);
-					return;
+					await Send(mauId, requestType, ret);
+					break;
 
 				case RequestType.EventCallback:
-					string eventName = jsonData["eventName"].Value<string>();
-					string eventType = jsonData["eventType"].Value<string>();
-					JObject eventData = JObject.Parse(jsonData["data"].Value<string>());
+					string eventName = jsonData["eventName"]!.Value<string>();
+					string eventType = jsonData["eventType"]!.Value<string>();
+					JObject eventData = JObject.Parse(jsonData["data"]!.Value<string>());
 
-					uiElement.FireEvent(eventName, eventType, eventData);
-					return;
+					mauElement.FireEvent(eventName, eventType, eventData);
+					break;
 
 				case RequestType.GetPropValue:
-					string propName = jsonData["propName"].Value<string>();
-					string propValue = jsonData["propValue"].Value<string>();
+					string propName = jsonData["propName"]!.Value<string>();
+					JToken propValType = jsonData["propValue"];
 
-					uiElement.SetPropValue(propName, propValue);
-					return;
+					mauElement.SetPropValue(propName, propValType);
+					break;
+
+				case RequestType.ReceiveMethod:
+					string methodName = jsonData["methodName"]!.Value<string>();
+					JToken methodRet = jsonData["methodRet"];
+
+					mauElement.SetMethodRetValue(methodName, methodRet);
+					break;
 
 				default:
 					throw new ArgumentOutOfRangeException();
@@ -272,7 +314,7 @@ namespace MAU
 
 		#endregion
 
-		#region [ UiHandler ]
+		#region [ MauHandler ]
 
 		private static async Task TimerHandler()
 		{
@@ -284,11 +326,11 @@ namespace MAU
 					_requestsQueue.Dequeue();
 			}
 		}
-		public static bool MauRegistered(string mauId)
+		public static bool IsMauRegistered(string mauId)
 		{
 			return _mauElements.ContainsKey(mauId);
 		}
-		public static void RegisterUi(MauElement element)
+		public static void RegisterMau(MauElement element)
 		{
 			_mauElements.Add(element.MauId, element);
 
@@ -301,7 +343,7 @@ namespace MAU
 			foreach (MauElement uiElement in element)
 				_mauElements.Add(uiElement.MauId, uiElement);
 		}
-		public static bool GetUiElement(string elementId, out MauElement element)
+		public static bool GetMauElement(string elementId, out MauElement element)
 		{
 			if (_mauElements.ContainsKey(elementId))
 			{

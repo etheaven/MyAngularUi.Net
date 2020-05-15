@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace MAU.Core
 {
@@ -21,10 +19,12 @@ namespace MAU.Core
 
 			// ReSharper disable once VirtualMemberCallInConstructor
 			InitElements();
+			// Register all MauElements
+			RegisterComponents();
 		}
 
-		public abstract void InitElements();
-		protected void RegisterComponent()
+		protected abstract void InitElements();
+		private void RegisterComponents()
 		{
 			// Get all mauElement
 			List<MauElement> mauElements = this.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
@@ -32,13 +32,13 @@ namespace MAU.Core
 				.Select(mauField => (MauElement)mauField.GetValue(this))
 				.ToList();
 
-			// Regester them
+			// Register them
 			foreach (MauElement element in mauElements.Where(e => e != null))
 			{
-				if (MyAngularUi.MauRegistered(element.MauId))
+				if (MyAngularUi.IsMauRegistered(element.MauId))
 					throw new Exception("MauElement with same mauId was registered.");
 
-				MyAngularUi.RegisterUi(element);
+				MyAngularUi.RegisterMau(element);
 			}
 		}
 	}
